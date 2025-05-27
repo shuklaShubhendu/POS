@@ -71,7 +71,7 @@ export interface MenuSection {
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;
-  notes?: string;
+  price?: number; // Optional, as it might be derived from menuItem.price
 }
 
 export interface Cart {
@@ -87,16 +87,18 @@ export interface Transaction {
   restaurantId: string;
   items: CartItem[];
   totalAmount: number;
+  subtotal: number; // Added to match CartContext.tsx
+  tax: number; // Added to match CartContext.tsx
   paymentMethod: 'cash' | 'card' | 'other';
   status: 'completed' | 'refunded' | 'cancelled';
   customerId?: string;
-  customerName?: string;
-  customerPhone?: string;
-  tableNumber?: string;
+  customerName: string | null; // Aligned with sanitization in TransactionContext.tsx
+  customerPhone: string | null; // Aligned with sanitization in TransactionContext.tsx
+  tableNumber: string | null; // Aligned with sanitization in TransactionContext.tsx
   employeeId: string;
   employeeName: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date | null; // Already updated to Date | null
+  updatedAt: Date | null; // Already updated to Date | null
 }
 
 export interface BillSettings {

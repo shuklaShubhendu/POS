@@ -123,9 +123,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const setCustomerInfo = (customerName?: string, customerPhone?: string, tableNumber?: string) => {
     setCart((prevCart) => ({
       ...prevCart,
-      customerName: customerName?.trim(),
-      customerPhone: customerPhone?.trim(),
-      tableNumber: tableNumber?.trim(),
+      customerName: customerName?.trim() || undefined,
+      customerPhone: customerPhone?.trim() || undefined,
+      tableNumber: tableNumber?.trim() || undefined,
     }));
   };
 
@@ -145,20 +145,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tax = subtotal * taxRate;
       const total = subtotal + tax;
 
-      const transactionId = await addTransaction({
+      // Convert undefined to null for Firestore
+      const transactionData = {
         items: cart.items,
         totalAmount: total,
         subtotal,
         tax,
         paymentMethod,
         status: 'completed',
-        customerName: cart.customerName,
-        customerPhone: cart.customerPhone,
-        tableNumber: cart.tableNumber,
+        customerName: cart.customerName ?? null,
+        customerPhone: cart.customerPhone ?? null,
+        tableNumber: cart.tableNumber ?? null,
         employeeId: currentUser.id,
         employeeName: currentUser.name,
         restaurantId: currentUser.restaurantId,
-      });
+      };
+
+      const transactionId = await addTransaction(transactionData);
 
       const bill = generateThermalBill({
         id: transactionId,
@@ -202,11 +205,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         totalAmount: total,
         subtotal,
         tax,
-        paymentMethod: 'card', // Default for generating bill without checkout
+        paymentMethod: 'card',
         status: 'completed',
-        customerName: cart.customerName,
-        customerPhone: cart.customerPhone,
-        tableNumber: cart.tableNumber,
+        customerName: cart.customerName ?? null,
+        customerPhone: cart.customerPhone ?? null,
+        tableNumber: cart.tableNumber ?? null,
         employeeId: currentUser.id,
         employeeName: currentUser.name,
         restaurantId: currentUser.restaurantId,

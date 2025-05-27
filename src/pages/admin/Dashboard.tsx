@@ -1,7 +1,7 @@
-import { 
-  ShoppingBag, 
-  Users, 
-  DollarSign, 
+import {
+  ShoppingBag,
+  Users,
+  DollarSign, // Although DollarSign icon is imported, it's not used for currency display, just for the visual card.
   TrendingUp,
   CalendarClock
 } from 'lucide-react';
@@ -32,34 +32,46 @@ ChartJS.register(
 );
 
 const Dashboard = () => {
-  const { transactions } = useTransactions();
+  const { transactions, getSalesData } = useTransactions();
   const { users } = useUsers();
   const { menuItems, menuSections } = useMenu();
-  
+
+  // Get sales data from TransactionContext
+  const { dailySales, topSellingItems } = getSalesData();
+
+  // Determine the most popular item name
+  const mostPopularItemName = topSellingItems.length > 0
+    ? topSellingItems[0].name
+    : 'N/A'; // Fallback if no items are sold or transactions exist
+
+
   // Get recent transactions (last 5)
   const recentTransactions = [...transactions]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 5);
-  
+
   // Calculate metrics
-  const totalSales = transactions.reduce((sum, t) => sum + t.totalAmount, 0);
-  const totalOrders = transactions.length;
-  const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+ const totalSales = transactions
+  .filter(t => t.status.toLowerCase() === 'completed')
+  .reduce((sum, t) => sum + t.totalAmount, 0);
+const totalOrders = transactions.filter(t => t.status.toLowerCase() === 'completed').length;
+const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
   
-  // Prepare data for daily sales chart
+
+  // Prepare data for weekly sales chart
   const salesData = {
     labels: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
     datasets: [
       {
         label: 'Daily Sales',
-        data: [3200, 4500, 3800, 5100, 6200, 7800, 6100],
+        data: dailySales,
         borderColor: '#FF0000',
         backgroundColor: 'rgba(255, 0, 0, 0.1)',
         tension: 0.4,
       },
     ],
   };
-  
+
   const chartOptions = {
     responsive: true,
     plugins: {
@@ -88,7 +100,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-6 fade-in">
       <h1 className="text-2xl font-bold">Dashboard</h1>
-      
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="card p-6">
@@ -98,11 +110,12 @@ const Dashboard = () => {
             </div>
             <div className="ml-4">
               <h3 className="text-gray-500 text-sm font-semibold">Total Sales</h3>
-              <p className="text-2xl font-bold">${totalSales.toFixed(2)}</p>
+              {/* Change $ to ₹ */}
+              <p className="text-2xl font-bold">₹{totalSales.toFixed(2)}</p>
             </div>
           </div>
         </div>
-        
+
         <div className="card p-6">
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 rounded-full">
@@ -114,7 +127,7 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="card p-6">
           <div className="flex items-center">
             <div className="p-3 bg-green-100 rounded-full">
@@ -122,11 +135,12 @@ const Dashboard = () => {
             </div>
             <div className="ml-4">
               <h3 className="text-gray-500 text-sm font-semibold">Avg. Order Value</h3>
-              <p className="text-2xl font-bold">${averageOrderValue.toFixed(2)}</p>
+              {/* Change $ to ₹ */}
+              <p className="text-2xl font-bold">₹{averageOrderValue.toFixed(2)}</p>
             </div>
           </div>
         </div>
-        
+
         <div className="card p-6">
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 rounded-full">
@@ -139,7 +153,7 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Charts and Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Sales Chart */}
@@ -149,11 +163,11 @@ const Dashboard = () => {
             <Line data={salesData} options={chartOptions} />
           </div>
         </div>
-        
+
         {/* Menu Stats */}
         <div className="card p-6">
           <h2 className="text-lg font-semibold mb-4">Menu Stats</h2>
-          
+
           <div className="space-y-4">
             <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
               <div>
@@ -162,7 +176,7 @@ const Dashboard = () => {
               </div>
               <span className="text-xl font-bold">{menuSections.length}</span>
             </div>
-            
+
             <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
               <div>
                 <h3 className="font-medium">Menu Items</h3>
@@ -170,24 +184,24 @@ const Dashboard = () => {
               </div>
               <span className="text-xl font-bold">{menuItems.length}</span>
             </div>
-            
+
             <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
               <div>
                 <h3 className="font-medium">Most Popular</h3>
                 <p className="text-gray-500 text-sm">Highest selling item</p>
               </div>
-              <span className="font-medium">Margherita Pizza</span>
+              <span className="font-medium">{mostPopularItemName}</span>
             </div>
           </div>
         </div>
       </div>
-      
+
       {/* Recent Transactions */}
       <div className="card overflow-hidden">
         <div className="p-6 border-b border-gray-100">
           <h2 className="text-lg font-semibold">Recent Transactions</h2>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="table">
             <thead className="table-header">
@@ -213,7 +227,8 @@ const Dashboard = () => {
                     {new Date(transaction.createdAt).toLocaleDateString()}
                   </td>
                   <td className="table-cell font-medium">
-                    ${transaction.totalAmount.toFixed(2)}
+                    {/* Change $ to ₹ here as well */}
+                    ₹{transaction.totalAmount.toFixed(2)}
                   </td>
                   <td className="table-cell">
                     <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">

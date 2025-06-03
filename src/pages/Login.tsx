@@ -43,8 +43,11 @@ const Login = () => {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center p-3 bg-red-600 rounded-full text-white mb-4">
-              <UtensilsCrossed size={32} />
+            <div className="inline-flex items-center justify-center p-3 bg-white-600 rounded-full mb-4">
+            <img
+            src="/logo.png"
+                alt="Logo"
+            className="h-10 w-10 object-contain rounded-full"/>
             </div>
             <h1 className="text-2xl font-bold">ezPay POS System</h1>
             <p className="text-gray-500 mt-1">Sign in to access your dashboard</p>
@@ -96,25 +99,13 @@ const Login = () => {
             </button>
           </form>
 
-          <div className="text-center mt-6 text-sm text-gray-600">
-            Don’t have an account?{' '}
-            <Link to="/signup" className="text-red-600 hover:underline">
-              Create one
-            </Link>
-          </div>
+  
 
-          <div className="text-center mt-6">
-            <div className="text-gray-600 text-sm font-semibold">Demo Accounts:</div>
-            <div className="text-gray-600 text-xs mt-2">
-              Admin: <code>admin@restaurant.com</code> / <code>admin123</code>
-            </div>
-            <div className="text-gray-600 text-xs mt-1">
-              Employee: <code>employee@restaurant.com</code> / <code>employee123</code>
-            </div>
+ 
           </div>
         </div>
       </div>
-    </div>
+    // </div>
   );
 };
 

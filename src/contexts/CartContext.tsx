@@ -1,9 +1,11 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { Cart, CartItem, MenuItem } from '../types';
 import { useAuth } from './AuthContext';
 import { useTransactions } from './TransactionContext';
-import { toast } from 'react-toastify';
 import { generateThermalBill } from '../utils/pdf';
+import { BillSettings, Transaction } from '../pages/admin/Settings';
+import PrintReceipt from '../pages/admin/PrintReceipt';
 
 interface CartContextType {
   cart: Cart;
@@ -13,7 +15,7 @@ interface CartContextType {
   clearCart: () => void;
   setCustomerInfo: (customerName?: string, customerPhone?: string, tableNumber?: string) => void;
   checkout: (paymentMethod: 'cash' | 'card' | 'other') => Promise<void>;
-  generateBill: () => Promise<string>;
+  generateBill: (useThermal?: boolean) => Promise<string | JSX.Element>;
   billText: string | null;
   copyBillText: () => void;
 }
@@ -37,18 +39,50 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tableNumber: undefined,
   });
   const [billText, setBillText] = useState<string | null>(null);
+  const [billSettings, setBillSettings] = useState<BillSettings>({
+    restaurantName: 'ezPay Restaurant',
+    address: '123 Main Street, City, State 12345',
+    phone: '(555) 123-4567',
+    taxRate: 10,
+    includeLogoOnBill: false,
+    footerText: 'Thank you for dining with us!',
+    showItemizedTax: true,
+    showServerName: true,
+    billFontSize: 7,
+    logoUrl: null,
+    qrCodeUrl: null,
+    showUpiQrCode: false,
+  });
 
   const { currentUser } = useAuth();
   const { addTransaction } = useTransactions();
 
+  // Load bill settings from localStorage
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('billSettings');
+      if (savedSettings) {
+        setBillSettings(JSON.parse(savedSettings));
+      }
+    } catch (error) {
+      console.error('Failed to load bill settings:', error);
+    }
+  }, []);
+
   const calculateTotal = (items: CartItem[]): number => {
     return items.reduce(
-      (total, item) => total + item.quantity * item.menuItem.price,
+      (total, item) => total + item.quantity * (item.menuItem.price ?? 0),
       0
     );
   };
 
   const addToCart = (item: MenuItem, quantity = 1) => {
+    if (typeof item.price !== 'number' || isNaN(item.price)) {
+      console.error(`Invalid price for item ${item.name}: ${item.price}`);
+      toast.error(`Cannot add ${item.name} to cart: Invalid price`);
+      return;
+    }
+
     setCart((prevCart) => {
       const existingItemIndex = prevCart.items.findIndex(
         (cartItem) => cartItem.menuItem.id === item.id
@@ -140,32 +174,49 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const taxRate = 0.18; // 18% GST
       const subtotal = cart.totalAmount;
-      const tax = subtotal * taxRate;
+      const tax = subtotal * (billSettings.taxRate / 100);
       const total = subtotal + tax;
 
-      // Convert undefined to null for Firestore
+      // Fixed: Include all required fields for transaction validation
+      const sanitizedItems = cart.items.map(item => ({
+        menuItem: {
+          id: item.menuItem.id, // This was missing!
+          name: item.menuItem.name,
+          price: item.menuItem.price ?? 0,
+          sectionId: item.menuItem.sectionId || undefined,
+          section: item.menuItem.section || undefined,
+        },
+        quantity: item.quantity,
+        price: item.menuItem.price ?? 0, // This was also missing!
+      }));
+
+      // Validate that all items have required fields
+      if (sanitizedItems.some(item => !item.menuItem.id || item.menuItem.price === 0)) {
+        console.error('Invalid items found:', sanitizedItems);
+        toast.error('Some items have invalid data. Please refresh and try again.');
+        throw new Error('Invalid item data');
+      }
+
       const transactionData = {
-        items: cart.items,
+        items: sanitizedItems,
         totalAmount: total,
         subtotal,
         tax,
         paymentMethod,
-        status: 'completed',
+        status: 'completed' as const,
         customerName: cart.customerName ?? null,
         customerPhone: cart.customerPhone ?? null,
         tableNumber: cart.tableNumber ?? null,
-        employeeId: currentUser.id,
         employeeName: currentUser.name,
         restaurantId: currentUser.restaurantId,
       };
 
-      const transactionId = await addTransaction(transactionData);
+      await addTransaction(transactionData);
 
       const bill = generateThermalBill({
-        id: transactionId,
-        items: cart.items,
+        id: 'temp-id', // This will be replaced by the actual transaction ID
+        items: sanitizedItems,
         subtotal,
         tax,
         total,
@@ -179,7 +230,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       setBillText(bill);
-      toast.success('Checkout completed. Copy the bill text to print on your thermal printer.');
+      toast.success('Checkout completed. Copy the bill text for thermal printer or print receipt.');
       clearCart();
     } catch (error: any) {
       console.error('Error during checkout:', error);
@@ -188,51 +239,82 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const generateBill = async () => {
+  const generateBill = async (useThermal: boolean = true) => {
     if (!currentUser || cart.items.length === 0) {
       toast.error('Cannot generate bill: Cart is empty or user not authenticated');
       throw new Error('Cannot generate bill: Cart is empty or user not authenticated');
     }
 
     try {
-      const taxRate = 0.18; // 18% GST
       const subtotal = cart.totalAmount;
-      const tax = subtotal * taxRate;
+      const tax = subtotal * (billSettings.taxRate / 100);
       const total = subtotal + tax;
 
-      const transactionId = await addTransaction({
-        items: cart.items,
+      // Fixed: Include all required fields for transaction validation
+      const sanitizedItems = cart.items.map(item => ({
+        menuItem: {
+          id: item.menuItem.id, // This was missing!
+          name: item.menuItem.name,
+          price: item.menuItem.price ?? 0,
+          sectionId: item.menuItem.sectionId || undefined,
+          section: item.menuItem.section || undefined,
+        },
+        quantity: item.quantity,
+        price: item.menuItem.price ?? 0, // This was also missing!
+      }));
+
+      // Validate that all items have required fields
+      if (sanitizedItems.some(item => !item.menuItem.id || item.menuItem.price === 0)) {
+        console.error('Invalid items found:', sanitizedItems);
+        toast.error('Some items have invalid data. Please refresh and try again.');
+        throw new Error('Invalid item data');
+      }
+
+      const transactionData = {
+        items: sanitizedItems,
         totalAmount: total,
         subtotal,
         tax,
-        paymentMethod: 'card',
-        status: 'completed',
+        paymentMethod: 'card' as const,
+        status: 'completed' as const,
         customerName: cart.customerName ?? null,
         customerPhone: cart.customerPhone ?? null,
         tableNumber: cart.tableNumber ?? null,
-        employeeId: currentUser.id,
         employeeName: currentUser.name,
         restaurantId: currentUser.restaurantId,
-      });
+      };
 
-      const bill = generateThermalBill({
-        id: transactionId,
-        items: cart.items,
-        subtotal,
-        tax,
-        total,
-        customerName: cart.customerName,
-        customerPhone: cart.customerPhone,
-        tableNumber: cart.tableNumber,
-        employeeId: currentUser.id,
-        employeeName: currentUser.name,
-        paymentMethod: 'card',
-        createdAt: new Date().toISOString(),
-      });
+      const transactionId = await addTransaction(transactionData);
 
-      setBillText(bill);
-      toast.success('Bill generated. Copy the bill text to print on your thermal printer.');
-      return bill;
+      if (useThermal) {
+        const bill = generateThermalBill({
+          id: transactionId,
+          items: sanitizedItems,
+          subtotal,
+          tax,
+          total,
+          customerName: cart.customerName,
+          customerPhone: cart.customerPhone,
+          tableNumber: cart.tableNumber,
+          employeeId: currentUser.id,
+          employeeName: currentUser.name,
+          paymentMethod: 'card',
+          createdAt: new Date().toISOString(),
+        });
+
+        setBillText(bill);
+        toast.success('Bill generated. Copy the bill text to print on your thermal printer.');
+        return bill;
+      } else {
+        const transaction: Transaction = {
+          id: transactionId,
+          items: sanitizedItems,
+          totalAmount: total,
+          employeeName: cart.customerName || currentUser.name || 'Guest',
+          tableNumber: cart.tableNumber || 'N/A',
+        };
+        return <PrintReceipt settings={billSettings} transaction={transaction} />;
+      }
     } catch (error: any) {
       console.error('Error generating bill:', error);
       toast.error(`Failed to generate bill: ${error.message}`);

@@ -1,26 +1,17 @@
-import { useState, useEffect } from 'react';
-import { 
-  ShoppingCart, 
-  Trash, 
-  Plus, 
-  Minus, 
-  User, 
-  Table, 
-  CreditCard, 
-  BanknoteIcon,
-  Receipt, 
-  Tag,
-  Clock
-} from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ShoppingCart, Trash, Plus, Minus, User, Table, CreditCard, Receipt, Tag, Clock } from 'lucide-react';
 import { useMenu } from '../../contexts/MenuContext';
 import { useCart } from '../../contexts/CartContext';
 import { MenuItem } from '../../types';
 import CheckoutModal from '../../components/modals/CheckoutModal';
 import CustomerInfoModal from '../../components/modals/CustomerInfoModal';
+import { BillSettings, Transaction } from '../admin/Settings';
+import { toast } from 'react-toastify';
+import { Link } from 'react-router-dom';
 
 const PosTerminal = () => {
   const { menuSections, getMenuItemsBySection } = useMenu();
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart } = useCart();
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, generateBill } = useCart();
   
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
   const [displayedItems, setDisplayedItems] = useState<MenuItem[]>([]);
@@ -28,89 +19,203 @@ const PosTerminal = () => {
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [customerInfoModalOpen, setCustomerInfoModalOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
-  // Update the displayed items when section changes
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [printContent, setPrintContent] = useState<JSX.Element | null>(null);
+
+  const [billSettings, setBillSettings] = useState<BillSettings>({
+    restaurantName: 'ezPay Restaurant',
+    address: '123 Main Street, City, State 12345',
+    phone: '(555) 123-4567',
+    taxRate: 10,
+    includeLogoOnBill: false,
+    footerText: 'Thank you for dining with us!',
+    showItemizedTax: true,
+    showServerName: true,
+    billFontSize: 7,
+    logoUrl: null,
+    qrCodeUrl: null,
+    showUpiQrCode: false,
+  });
+
   useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('billSettings');
+      if (savedSettings) {
+        setBillSettings(JSON.parse(savedSettings));
+      }
+    } catch (error) {
+      console.error('Failed to load bill settings:', error);
+      toast.error('Failed to load bill settings. Using defaults.');
+    }
+  }, []);
+
+  useEffect(() => {
+    console.log('menuSections:', menuSections);
+    console.log('getMenuItemsBySection:', getMenuItemsBySection);
     if (selectedSectionId) {
-      setDisplayedItems(getMenuItemsBySection(selectedSectionId));
+      const items = getMenuItemsBySection(selectedSectionId) || [];
+      console.log('Menu items for section', selectedSectionId, items);
+      setDisplayedItems(items);
     } else if (menuSections.length > 0) {
-      // Default to first section
       setSelectedSectionId(menuSections[0].id);
-      setDisplayedItems(getMenuItemsBySection(menuSections[0].id));
+      const items = getMenuItemsBySection(menuSections[0].id) || [];
+      console.log('Menu items for default section', menuSections[0].id, items);
+      setDisplayedItems(items);
+    } else {
+      setDisplayedItems([]);
     }
   }, [selectedSectionId, menuSections, getMenuItemsBySection]);
-  
-  // Update time
+
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-    
     return () => clearInterval(timer);
   }, []);
-  
-  // Handle search
+
   useEffect(() => {
     if (searchTerm.trim() === '') {
-      // If search is cleared, show selected section items
       if (selectedSectionId) {
-        setDisplayedItems(getMenuItemsBySection(selectedSectionId));
+        const items = getMenuItemsBySection(selectedSectionId) || [];
+        console.log('Restored section items', selectedSectionId, items);
+        setDisplayedItems(items);
       }
       return;
     }
-    
-    // Search across all menu items
-    const allItems = menuSections.flatMap(section => 
-      getMenuItemsBySection(section.id)
-    );
-    
+    const allItems = menuSections.flatMap(section => getMenuItemsBySection(section.id));
     const filtered = allItems.filter(item => 
       item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchTerm.toLowerCase())
+      (item.description && item.description.toLowerCase().includes(searchTerm.toLowerCase()))
     );
-    
+    console.log('Filtered items for search', searchTerm, filtered);
     setDisplayedItems(filtered);
   }, [searchTerm, selectedSectionId, menuSections, getMenuItemsBySection]);
-  
-  // Handle section click
+
   const handleSectionClick = (sectionId: string) => {
     setSelectedSectionId(sectionId);
     setSearchTerm('');
   };
-  
-  // Format time
+
   const formattedTime = new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     hour12: true,
   }).format(currentTime);
-  
-  // Calculate subtotal, tax, and total
+
   const subtotal = cart.totalAmount;
-  const taxRate = 0.18; // 18% GST
-  const tax = subtotal * taxRate;
+  const tax = subtotal * (billSettings.taxRate / 100);
   const total = subtotal + tax;
-  
-  // Handle checkout
+
   const handleCheckout = () => {
     if (cart.items.length === 0) {
-      alert('Please add items to the cart before checkout');
+      toast.error('Please add items to the cart before checkout');
       return;
     }
-    
     setCheckoutModalOpen(true);
   };
-  
-  // Open customer info modal
+
   const handleCustomerInfo = () => {
     setCustomerInfoModalOpen(true);
   };
 
+  const handleActualPrint = useCallback(() => {
+    console.log('Calling window.print()');
+    window.print();
+  }, []);
+
+  useEffect(() => {
+    let printTimeoutId: NodeJS.Timeout | null = null;
+    let mediaQueryList: MediaQueryList | null = null;
+
+    const afterPrintHandler = () => {
+      console.log('Print dialog closed or printing finished.');
+      setIsPrinting(false);
+      setPrintContent(null);
+      window.removeEventListener('afterprint', afterPrintHandler);
+      if (mediaQueryList) {
+        mediaQueryList.removeEventListener('change', mediaQueryChangeHandler);
+      }
+    };
+
+    const mediaQueryChangeHandler = (mqlEvent: MediaQueryListEvent) => {
+      if (!mqlEvent.matches) {
+        console.log('Print media query changed, no longer "print".');
+        afterPrintHandler();
+      }
+    };
+
+    if (isPrinting && printContent) {
+      console.log('isPrinting is true, setting up print process...');
+      window.addEventListener('afterprint', afterPrintHandler);
+      mediaQueryList = window.matchMedia('print');
+      mediaQueryList.addEventListener('change', mediaQueryChangeHandler);
+
+      // Wait for the next render cycle to ensure printContent is in the DOM
+      printTimeoutId = setTimeout(() => {
+        handleActualPrint();
+      }, 0);
+
+      return () => {
+        console.log('Cleaning up print effect.');
+        if (printTimeoutId) clearTimeout(printTimeoutId);
+        window.removeEventListener('afterprint', afterPrintHandler);
+        if (mediaQueryList) {
+          mediaQueryList.removeEventListener('change', mediaQueryChangeHandler);
+        }
+      };
+    }
+  }, [isPrinting, printContent, handleActualPrint]);
+
+  const triggerPrint = async () => {
+    if (cart.items.length === 0) {
+      toast.error('Please add items to the cart before printing');
+      return;
+    }
+    try {
+      console.log('Cart items before generating bill:', cart.items);
+      const bill = await generateBill(false);
+      console.log('Generated bill:', bill);
+      if (!bill.props.transaction?.items?.length) {
+        throw new Error('No items in the generated bill');
+      }
+      setPrintContent(bill as JSX.Element);
+      setIsPrinting(true);
+    } catch (error) {
+      console.error('Failed to generate bill for printing:', error);
+      toast.error('Failed to generate bill for printing');
+    }
+  };
+
+  const handleAddToCart = (item: MenuItem) => {
+    console.log('Adding item to cart:', item);
+    if (item.available && typeof item.price === 'number' && !isNaN(item.price)) {
+      addToCart(item);
+    } else {
+      console.error('Invalid item:', item);
+      toast.error(`Cannot add ${item.name} to cart: Invalid data`);
+    }
+  };
+
+  const printStyles = `
+    .print-only {
+      display: none;
+    }
+    @media print {
+      .print-only {
+        display: block !important;
+      }
+    }
+  `;
+
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-screen flex flex-col">
+      <style>{printStyles}</style>
+      {/* <div className="bg-white p-4 border-b flex justify-between items-center">
+        <h1 className="text-xl font-bold">POS Terminal</h1>
+        <Link to="/settings" className="text-blue-600 hover:underline">Settings</Link>
+      </div> */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Left side - Cart */}
         <div className="w-full md:w-1/3 lg:w-1/4 bg-white border-r border-gray-200 flex flex-col h-full overflow-hidden">
           <div className="p-4 bg-red-600 text-white flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -154,7 +259,6 @@ const PosTerminal = () => {
             </button>
           </div>
           
-          {/* Cart items */}
           <div className="flex-1 overflow-y-auto">
             {cart.items.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -213,14 +317,13 @@ const PosTerminal = () => {
             )}
           </div>
           
-          {/* Cart totals and checkout */}
           <div className="p-4 border-t border-gray-200 bg-white">
             <div className="flex justify-between mb-2">
               <span className="text-gray-600">Subtotal</span>
               <span>₹{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between mb-2">
-              <span className="text-gray-600">GST (18%)</span>
+              <span className="text-gray-600">GST ({billSettings.taxRate}%)</span>
               <span>₹{tax.toFixed(2)}</span>
             </div>
             <div className="flex justify-between font-bold text-lg mb-4">
@@ -228,9 +331,9 @@ const PosTerminal = () => {
               <span>₹{total.toFixed(2)}</span>
             </div>
             
-            <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="grid grid-cols-3 gap-2 mb-2">
               <button 
-                className="btn btn-secondary flex items-center justify-center gap-2"
+                className="bg-gray-500 text-white py-2 rounded hover:bg-gray-600 flex items-center justify-center gap-2 disabled:opacity-50"
                 onClick={clearCart}
                 disabled={cart.items.length === 0}
               >
@@ -239,20 +342,27 @@ const PosTerminal = () => {
               </button>
               
               <button 
-                className="btn btn-primary flex items-center justify-center gap-2"
+                className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50"
                 onClick={handleCheckout}
                 disabled={cart.items.length === 0}
               >
                 <CreditCard size={18} />
                 Checkout
               </button>
+              
+              <button 
+                className="bg-green-600 text-white py-2 rounded hover:bg-green-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                onClick={triggerPrint}
+                disabled={cart.items.length === 0}
+              >
+                <Receipt size={18} />
+                Print
+              </button>
             </div>
           </div>
         </div>
         
-        {/* Right side - Menu */}
         <div className="w-full md:w-2/3 lg:w-3/4 flex flex-col h-full overflow-hidden">
-          {/* Sections */}
           <div className="flex overflow-x-auto p-2 bg-white border-b border-gray-200">
             {menuSections.map((section) => (
               <button
@@ -269,7 +379,6 @@ const PosTerminal = () => {
             ))}
           </div>
           
-          {/* Search */}
           <div className="p-3 bg-white border-b border-gray-200">
             <div className="relative">
               <input 
@@ -277,7 +386,7 @@ const PosTerminal = () => {
                 placeholder="Search menu items..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input-field pl-10"
+                className="w-full rounded-md border-gray-300 pl-10 pr-4 py-2 focus:border-blue-500 focus:ring-blue-500"
               />
               <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -287,7 +396,6 @@ const PosTerminal = () => {
             </div>
           </div>
           
-          {/* Menu items */}
           <div className="flex-1 overflow-y-auto bg-gray-100 p-4">
             {displayedItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
@@ -304,12 +412,12 @@ const PosTerminal = () => {
                 {displayedItems.map((item) => (
                   <div 
                     key={item.id} 
-                    className={`card cursor-pointer hover:shadow-md transition-shadow ${
+                    className={`bg-white rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow ${
                       !item.available ? 'opacity-60' : ''
                     }`}
-                    onClick={() => item.available && addToCart(item)}
+                    onClick={() => handleAddToCart(item)}
                   >
-                    <div className="h-32 bg-gray-200 overflow-hidden">
+                    <div className="h-32 bg-gray-200 overflow-hidden rounded-t-lg">
                       {item.image ? (
                         <img 
                           src={item.image} 
@@ -345,7 +453,12 @@ const PosTerminal = () => {
         </div>
       </div>
       
-      {/* Modals */}
+      {isPrinting && printContent && (
+        <div className="print-only" aria-hidden="true">
+          {printContent}
+        </div>
+      )}
+
       <CheckoutModal 
         isOpen={checkoutModalOpen} 
         onClose={() => setCheckoutModalOpen(false)} 

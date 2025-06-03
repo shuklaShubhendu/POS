@@ -47,7 +47,7 @@ const Login = () => {
             <img
             src="/logo.png"
                 alt="Logo"
-            className="h-10 w-10 object-contain rounded-full"/>
+            className="h-120 w-120 object-contain rounded-full"/>
             </div>
             <h1 className="text-2xl font-bold">ezPay POS System</h1>
             <p className="text-gray-500 mt-1">Sign in to access your dashboard</p>

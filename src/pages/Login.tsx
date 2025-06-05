@@ -44,10 +44,11 @@ const Login = () => {
         <div className="bg-white rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center p-3 bg-white-600 rounded-full mb-4">
-            <img
-            src="/logo.png"
+              <img
+                src="/logo.png"
                 alt="Logo"
-            className="h-120 w-120 object-contain rounded-full"/>
+                className="h-120 w-120 object-contain rounded-full"
+              />
             </div>
             <h1 className="text-2xl font-bold">ezPay POS System</h1>
             <p className="text-gray-500 mt-1">Sign in to access your dashboard</p>
@@ -99,13 +100,12 @@ const Login = () => {
             </button>
           </form>
 
-  
-
- 
+          <div className="text-center mt-6 text-sm text-gray-500">
+            Powered by Boxsam Technology
           </div>
         </div>
       </div>
-    // </div>
+    </div>
   );
 };
 
